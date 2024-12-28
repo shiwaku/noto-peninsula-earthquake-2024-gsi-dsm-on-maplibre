@@ -1,0 +1,968 @@
+<html>
+    <head>
+        <title>令和6年能登半島地震 被災状況3Dマップ</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+        <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+        <script src="https://unpkg.com/pmtiles@2.11.0/dist/index.js"></script>
+        <script type="module" src="maplibre-gl-gsi-terrain-fast-png.js"></script>
+        <style>
+            body {
+                margin: 0;
+            }
+
+            #map {
+                height: 100%;
+                width: 100%;
+            }
+
+            .map-overlay {
+                font: bold 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+                position: absolute;
+                width: 160px;
+                bottom: 20px;
+                left: 0;
+                padding: 10px;
+            }
+
+            .map-overlay .map-overlay-inner {
+                background-color: rgba(255, 255, 255, 0.8);
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+                border-radius: 3px;
+                padding: 10px;
+                margin-bottom: 10px;
+            }
+
+            .map-overlay label {
+                display: block;
+                margin: 0 0 0px;
+                font-size: 12px;
+                top: 100px;
+                left: 10px;
+                display: block;
+                margin-bottom: 5px;
+            }
+
+            .map-overlay input {
+                background-color: transparent;
+                display: inline-block;
+                width: 100%;
+                position: relative;
+                margin: 0;
+                cursor: ew-resize;
+            }
+
+            #info {
+                padding: 6px 8px;
+                font: 12px/14px Arial, Helvetica, sans-serif;
+                color: navy;
+                background: rgba(255, 255, 255, 0.8);
+                box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+                border-radius: 5px;
+                width: fit-content;
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                z-index: 1;
+            }
+
+            .yubi {
+                cursor: pointer;
+                z-index: 1;
+            }
+
+            .checkbox-button-container {
+                display: flex;
+                flex-direction: column;
+                justify-content: start;
+            }
+
+            .column {
+                display: flex;
+                flex-direction: column;
+                margin-right: 20px;
+            }
+
+            .legend {
+                background-color: rgba(255, 255, 255, 0.8);
+                border-radius: 3px;
+                bottom: 50px;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+                font: 12px/14px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+                padding: 10px;
+                position: absolute;
+                right: 10px;
+                z-index: 1;
+                line-height: 10px;
+                height: auto;
+            }
+
+            .legend h4 {
+                margin: 0 0 10px;
+            }
+
+            .legend div span {
+                border-radius: 50%;
+                display: inline-block;
+                height: 15px;
+                margin-right: 10px;
+                width: 15px;
+                color: orangered;
+            }
+
+            .square {
+                width: 10px;
+                height: 10px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="map"></div>
+        <div id="info">
+            <details>
+                <summary class="yubi">
+                    <strong>レイヤー</strong>
+                </summary>
+                <fieldset>
+                    <div class="checkbox-button-container">
+                        <div class="column">
+                            <div>
+                                <input type="checkbox" id="hokai" value="hokai" checked />
+                                <label for="hokai">斜面崩壊・堆積範囲(1月22日更新)</label>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="tsunami" value="tsunami" checked />
+                                <label for="tsunami">津波浸水範囲(1月19日更新)</label>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="uplift" value="uplift" checked />
+                                <label for="uplift">海岸線が前進した範囲(1月15日公開)</label>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="fire" value="fire" checked />
+                                <label for="fire">輪島市中心の火災焼失範囲(1月12日更新)</label>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="cracks" value="cracks" checked />
+                                <label for="cracks">亀裂箇所(2月14日公表)</label>
+                            </div>
+                            <div>
+                                <input type="checkbox" id="uplift-port" value="uplift-port" checked />
+                                <label for="uplift-port">陸化したと思われる港(1月18日更新)</label>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            </details>
+        </div>
+        <div class="map-overlay top">
+            <div class="map-overlay-inner">
+                <label>空中写真 不透明度: <span id="photo-slider-opacity-value">100%</span></label>
+                <input id="photo-slider-opacity" type="range" min="0" max="100" step="1" value="100" />
+            </div>
+        </div>
+        <div id="legend" class="legend">
+            <h4>凡例</h4>
+            <div class="square" style="background-color: rgb(255, 0, 0, 0.1); outline: 2px solid; outline-color: rgba(255, 0, 0, 1); display: inline-block"></div>
+            <span style="margin-left: 5px">斜面崩壊・堆積範囲</span><br />
+            <div style="height: 5px"></div>
+            <div class="square" style="background-color: rgb(0, 0, 255, 0.1); outline: 2px solid; outline-color: rgba(0, 0, 255, 1); display: inline-block"></div>
+            <span style="margin-left: 5px">津波浸水範囲</span>
+            <div style="height: 5px"></div>
+            <div class="square" style="background-color: rgb(191, 0, 255, 0.1); outline: 2px solid; outline-color: rgba(191, 0, 255, 1); display: inline-block"></div>
+            <span style="margin-left: 5px">海岸線が前進した範囲</span>
+            <div style="height: 5px"></div>
+            <div class="square" style="background-color: rgb(255, 127, 0, 0.1); outline: 2px solid; outline-color: rgba(255, 127, 0, 1); display: inline-block"></div>
+            <span style="margin-left: 5px">火災焼失範囲(輪島市中心)</span>
+            <div style="height: 5px"></div>
+            <div style="height: 3px; width: 12px; background-color: rgba(255, 0, 191, 1); display: inline-block"></div>
+            <span style="margin-left: 5px">亀裂箇所</span>
+            <div style="height: 5px"></div>
+            <span><img src="https://maps.gsi.go.jp/portal/sys/v4/symbols/080.png" style="width: 15px; height: 15px" /></span>
+            <span>陸化したと思われる港</span>
+        </div>
+        <script type="text/javascript">
+            // addProtocolの設定
+            let protocol = new pmtiles.Protocol();
+            maplibregl.addProtocol('pmtiles', protocol.tile);
+
+            // マップの初期化
+            const map = new maplibregl.Map({
+                container: 'map',
+                style: 'std.json',
+                zoom: 16.92,
+                minZoom: 1,
+                maxZoom: 23,
+                pitch: 68,
+                bearing: 152.4,
+                maxPitch: 85,
+                center: [137.023295, 37.4324],
+                hash: true,
+                attributionControl: false,
+            });
+
+            // ズーム・回転
+            map.addControl(new maplibregl.NavigationControl());
+
+            // フルスクリーンモードのオンオフ
+            map.addControl(new maplibregl.FullscreenControl());
+
+            // 現在位置表示
+            map.addControl(
+                new maplibregl.GeolocateControl({
+                    positionOptions: {
+                        enableHighAccuracy: false,
+                    },
+                    fitBoundsOptions: { maxZoom: 18 },
+                    trackUserLocation: true,
+                    showUserLocation: true,
+                })
+            );
+
+            // スケール表示
+            map.addControl(
+                new maplibregl.ScaleControl({
+                    maxWidth: 200,
+                    unit: 'metric',
+                })
+            );
+
+            // Attributionを折りたたみ表示
+            map.addControl(
+                new maplibregl.AttributionControl({
+                    compact: true,
+                    customAttribution: '（<a href="https://twitter.com/shi__works" target="_blank">Twitter</a> | <a href="https://github.com/shi-works/noto-hanto-earthquake-2024-gsi-dsm-map-on-maplibre-gl-js" target="_blank">Github</a>） ',
+                })
+            );
+
+            // 3D地形コントロール
+            map.addControl(
+                new maplibregl.TerrainControl({
+                    source: 'gsidem',
+                    exaggeration: 1, // 標高を強調する倍率
+                })
+            );
+
+            // マップをロード
+            map.on('load', () => {
+                // 地理院 標高タイルソース
+                map.addSource('gsidem', {
+                    type: 'raster-dem',
+                    tiles: [
+                        // 'gsidem://https://maps.gsi.go.jp/xyz/2mDSM/{z}/{x}/{y}.png',
+                        'gsidem://https://maps.gsi.go.jp/xyz/20240102noto_1mDSM/{z}/{x}/{y}.png',
+                    ],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html#dem" target="_blank">地理院タイル(標高タイル)</a>',
+                    tileSize: 256,
+                });
+
+                // 地理院 標高タイルセット
+                map.setTerrain({ source: 'gsidem', exaggeration: 1 });
+
+                // ============================== 正射画像 ==============================
+
+                // 令和6年能登半島地震 輪島中地区　正射画像（2024年1月11日撮影）ソース
+                map.addSource('wazimanaka-0111', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102noto_wazimanaka_0111do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 輪島中地区　正射画像（2024年1月11日撮影）レイヤ
+                map.addLayer({
+                    id: 'wazimanaka-0111',
+                    type: 'raster',
+                    source: 'wazimanaka-0111',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // 令和6年能登半島地震 七尾地区　正射画像（2024年1月5日撮影）ソース
+                map.addSource('nanao-0105', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102_noto_nanao_0105do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 七尾地区　正射画像（2024年1月5日撮影）レイヤ
+                map.addLayer({
+                    id: 'nanao-0105',
+                    type: 'raster',
+                    source: 'nanao-0105',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // 令和6年能登半島地震 穴水地区　正射画像（2024年1月17日撮影）ソース
+                map.addSource('anamizu-0117', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102noto_anamizu_0117do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 穴水地区　正射画像（2024年1月17日撮影）レイヤ
+                map.addLayer({
+                    id: 'anamizu-0117',
+                    type: 'raster',
+                    source: 'anamizu-0117',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // 令和6年能登半島地震 輪島西地区　正射画像（2024年1月11日撮影）ソース
+                map.addSource('wazimanishi-0111', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102noto_wazimanishi_0111do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 輪島西地区　正射画像（2024年1月11日撮影）レイヤ
+                map.addLayer({
+                    id: 'wazimanishi-0111',
+                    type: 'raster',
+                    source: 'wazimanishi-0111',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // 令和6年能登半島地震 輪島東地区　正射画像（2024年1月2日撮影）ソース
+                map.addSource('wazimahigashi-0102', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102noto_wazimahigashi_0102do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 輪島東地区　正射画像（2024年1月2日撮影）レイヤ
+                map.addLayer({
+                    id: 'wazimahigashi-0102',
+                    type: 'raster',
+                    source: 'wazimahigashi-0102',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // 令和6年能登半島地震 輪島東地区　正射画像（2024年1月14日撮影）ソース
+                map.addSource('wazimahigashi-0114', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102noto_wazimahigashi_0114do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 輪島東地区　正射画像（2024年1月14日撮影）レイヤ
+                map.addLayer({
+                    id: 'wazimahigashi-0114',
+                    type: 'raster',
+                    source: 'wazimahigashi-0114',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // 令和6年能登半島地震 珠洲地区　正射画像（2024年1月2日撮影）ソース
+                map.addSource('suzu-0102', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102noto_suzu_0102do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 珠洲地区　正射画像（2024年1月2日撮影）レイヤ
+                map.addLayer({
+                    id: 'suzu-0102',
+                    type: 'raster',
+                    source: 'suzu-0102',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // 令和6年能登半島地震 珠洲地区　正射画像（2024年1月14日撮影）ソース
+                map.addSource('suzu-0114', {
+                    type: 'raster',
+                    tiles: ['https://cyberjapandata.gsi.go.jp/xyz/20240102noto_suzu_0114do/{z}/{x}/{y}.png'],
+                    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+                });
+
+                // 令和6年能登半島地震 珠洲地区　正射画像（2024年1月14日撮影）レイヤ
+                map.addLayer({
+                    id: 'suzu-0114',
+                    type: 'raster',
+                    source: 'suzu-0114',
+                    paint: {
+                        'raster-opacity': 1,
+                    },
+                    layout: {
+                        visibility: 'visible',
+                    },
+                });
+
+                // ============================== 斜面崩壊・堆積分布データ ==============================
+
+                // 斜面崩壊・堆積分布データ（珠洲地区、輪島東地区）ソース
+                map.addSource('hokai_all_20240106_suzu-wajimaEAST', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/hokai_all_20240106_suzu-wajimaEAST.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 斜面崩壊・堆積分布データ（珠洲地区、輪島東地区）ラインレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240106_suzu-wajimaEAST-line',
+                    type: 'line',
+                    source: 'hokai_all_20240106_suzu-wajimaEAST',
+                    paint: {
+                        'line-color': '#FF0000',
+                        'line-width': 2,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（珠洲地区、輪島東地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240106_suzu-wajimaEAST-fill',
+                    type: 'fill',
+                    source: 'hokai_all_20240106_suzu-wajimaEAST',
+                    paint: {
+                        'fill-color': '#FF0000',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（輪島中地区）ソース
+                map.addSource('hokai_all_20240115_wajimaCENTRAL', {
+                    type: 'geojson',
+                    // data: './data/hokai_all_20240106_wajimaCENTRAL.geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/hokai_all_20240115_wajimaCENTRAL_Re2.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 斜面崩壊・堆積分布データ（輪島中地区）ラインレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240115_wajimaCENTRAL-line',
+                    type: 'line',
+                    source: 'hokai_all_20240115_wajimaCENTRAL',
+                    paint: {
+                        'line-color': '#FF0000',
+                        'line-width': 2,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（輪島中地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240115_wajimaCENTRAL-fill',
+                    type: 'fill',
+                    source: 'hokai_all_20240115_wajimaCENTRAL',
+                    paint: {
+                        'fill-color': '#FF0000',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（穴水地区）ソース
+                map.addSource('hokai_all_20240118_anamizu', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/hokai_all_20240118_anamizu.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 斜面崩壊・堆積分布データ（穴水地区）ラインレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240118_anamizu-line',
+                    type: 'line',
+                    source: 'hokai_all_20240118_anamizu',
+                    paint: {
+                        'line-color': '#FF0000',
+                        'line-width': 2,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（穴水地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240118_anamizu-fill',
+                    type: 'fill',
+                    source: 'hokai_all_20240118_anamizu',
+                    paint: {
+                        'fill-color': '#FF0000',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（七尾地区）ソース
+                map.addSource('hokai_all_20240118_nanao', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/hokai_all_20240118_nanao.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 斜面崩壊・堆積分布データ（七尾地区）ラインレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240118_nanao-line',
+                    type: 'line',
+                    source: 'hokai_all_20240118_nanao',
+                    paint: {
+                        'line-color': '#FF0000',
+                        'line-width': 2,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（七尾地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'hokai_all_20240118_nanao-fill',
+                    type: 'fill',
+                    source: 'hokai_all_20240118_nanao',
+                    paint: {
+                        'fill-color': '#FF0000',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（輪島西地区）ソース
+                map.addSource('hokai_20240122_wajimaWEST', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/hokai_20240122_wajimaWEST.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 斜面崩壊・堆積分布データ（輪島西地区）ラインレイヤ
+                map.addLayer({
+                    id: 'hokai_20240122_wajimaWEST-line',
+                    type: 'line',
+                    source: 'hokai_20240122_wajimaWEST',
+                    paint: {
+                        'line-color': '#FF0000',
+                        'line-width': 2,
+                    },
+                });
+
+                // 斜面崩壊・堆積分布データ（輪島西地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'hokai_20240122_wajimaWEST-fill',
+                    type: 'fill',
+                    source: 'hokai_20240122_wajimaWEST',
+                    paint: {
+                        'fill-color': '#FF0000',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // ============================== 空中写真判読による津波浸水域（推定） ==============================
+
+                // 空中写真判読による津波浸水域（推定）（珠洲地区、輪島東地区）ソース
+                map.addSource('tsunami_suzu-wajimaEAST', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/shinsui-tsunami-area_suzu-wajimaEAST-Re2_20240110.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 空中写真判読による津波浸水域（推定）（珠洲地区、輪島東地区）ラインレイヤ
+                map.addLayer({
+                    id: 'tsunami_suzu-wajimaEAST-line',
+                    type: 'line',
+                    source: 'tsunami_suzu-wajimaEAST',
+                    paint: {
+                        'line-color': '#0000FF',
+                        'line-width': 2,
+                    },
+                });
+
+                // 空中写真判読による津波浸水域（推定）（珠洲地区、輪島東地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'tsunami_suzu-wajimaEAST-fill',
+                    type: 'fill',
+                    source: 'tsunami_suzu-wajimaEAST',
+                    paint: {
+                        'fill-color': '#0000FF',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // 空中写真判読による津波浸水域（推定）（穴水地区）ソース
+                map.addSource('tsunami_anamizu', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/shinsui-tsunami-area_anamizu_20240118.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 空中写真判読による津波浸水域（推定）（穴水地区）ラインレイヤ
+                map.addLayer({
+                    id: 'tsunami_anamizu-line',
+                    type: 'line',
+                    source: 'tsunami_anamizu',
+                    paint: {
+                        'line-color': '#0000FF',
+                        'line-width': 2,
+                    },
+                });
+
+                // 空中写真判読による津波浸水域（推定）（穴水地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'tsunami_anamizu-fill',
+                    type: 'fill',
+                    source: 'tsunami_anamizu',
+                    paint: {
+                        'fill-color': '#0000FF',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // 空中写真判読による津波浸水域（推定）（七尾地区）ソース
+                map.addSource('tsunami_nanao', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/shinsui-tsunami-area_nanao_20240118.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 空中写真判読による津波浸水域（推定）（七尾地区）ラインレイヤ
+                map.addLayer({
+                    id: 'tsunami_nanao-line',
+                    type: 'line',
+                    source: 'tsunami_nanao',
+                    paint: {
+                        'line-color': '#0000FF',
+                        'line-width': 2,
+                    },
+                });
+
+                // 空中写真判読による津波浸水域（推定）（七尾地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'tsunami_nanao-fill',
+                    type: 'fill',
+                    source: 'tsunami_nanao',
+                    paint: {
+                        'fill-color': '#0000FF',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // 空中写真判読による津波浸水域（推定）（輪島西地区）ソース
+                map.addSource('tsunami_wajimaWEST', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/shinsui-tsunami-area_wajimaWEST_20240112.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 空中写真判読による津波浸水域（推定）（輪島西地区）ラインレイヤ
+                map.addLayer({
+                    id: 'tsunami_wajimaWEST-line',
+                    type: 'line',
+                    source: 'tsunami_wajimaWEST',
+                    paint: {
+                        'line-color': '#0000FF',
+                        'line-width': 2,
+                    },
+                });
+
+                // 空中写真判読による津波浸水域（推定）（輪島西地区）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'tsunami_wajimaWEST-fill',
+                    type: 'fill',
+                    source: 'tsunami_wajimaWEST',
+                    paint: {
+                        'fill-color': '#0000FF',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // ============================== 海岸線が前進した範囲 ==============================
+
+                // 海岸線が前進した範囲（空中写真・衛星画像）ソース
+                map.addSource('Uplift', {
+                    type: 'geojson',
+                    // data: './data/CL_NotoNE0104.geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/Uplift_mapping_NotoEQ_ver3.geojson',
+                    attribution: '<a href="https://ajg-disaster.blogspot.com/2024/01/2024_2.html">日本地理学会 令和6年能登半島地震変動地形調査グループ（海岸線が前進した範囲）</a>',
+                });
+
+                // 海岸線が前進した範囲（空中写真・衛星画像）ラインレイヤ
+                map.addLayer({
+                    id: 'Uplift-line',
+                    type: 'line',
+                    source: 'Uplift',
+                    paint: {
+                        'line-color': '#BF00FF',
+                        'line-width': 2,
+                    },
+                });
+
+                // 海岸線が前進した範囲（空中写真・衛星画像）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'Uplift-fill',
+                    type: 'fill',
+                    source: 'Uplift',
+                    paint: {
+                        'fill-color': '#BF00FF',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // ============================== 火災焼失範囲 ==============================
+
+                // 空中写真等の画像判読による輪島市中心の火災焼失範囲（推定）ソース
+                map.addSource('fire_wajima', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/20240112_輪島市火災範囲（推定）.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 空中写真等の画像判読による輪島市中心の火災焼失範囲（推定）ラインレイヤ
+                map.addLayer({
+                    id: 'fire_wajima-line',
+                    type: 'line',
+                    source: 'fire_wajima',
+                    paint: {
+                        'line-color': '#FF7F00',
+                        'line-width': 2,
+                    },
+                });
+
+                // 空中写真等の画像判読による輪島市中心の火災焼失範囲（推定）ポリゴンレイヤ
+                map.addLayer({
+                    id: 'fire_wajima-fill',
+                    type: 'fill',
+                    source: 'fire_wajima',
+                    paint: {
+                        'fill-color': '#FF7F00',
+                        'fill-opacity': 0.1,
+                    },
+                });
+
+                // ============================== 陸化したと思われる港 ==============================
+
+                // 陸化したと思われる港ソース
+                map.addSource('uplift-port', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/漁港の隆起_Ver3.0.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // PNGソース追加
+                map.loadImage('https://maps.gsi.go.jp/portal/sys/v4/symbols/080.png', function (error, image) {
+                    if (error) throw error;
+                    map.addImage('port_symbol_080', image);
+                });
+
+                // PNGソース追加
+                map.loadImage('https://maps.gsi.go.jp/portal/sys/v4/symbols/082.png', function (error, image) {
+                    if (error) throw error;
+                    map.addImage('port_symbol_082', image);
+                });
+
+                // 陸化したと思われる港シンボルレイヤ
+                map.addLayer({
+                    id: 'uplift-port-symbol',
+                    type: 'symbol',
+                    source: 'uplift-port',
+                    minzoom: 1,
+                    maxzoom: 23,
+                    layout: {
+                        'icon-image': ['match', ['get', '_iconUrl'], 'https://maps.gsi.go.jp/portal/sys/v4/symbols/080.png', 'port_symbol_080', 'https://maps.gsi.go.jp/portal/sys/v4/symbols/082.png', 'port_symbol_082', 'port_symbol_080'],
+                        'icon-size': [
+                            'interpolate',
+                            ['linear'],
+                            ['zoom'],
+                            1,
+                            0.1, // ズームレベル1でサイズは0.1
+                            12,
+                            1, // ズームレベル12でサイズは1.2
+                        ],
+                        'icon-allow-overlap': true, // シンボルの重なりを許可
+                        visibility: 'visible',
+                    },
+                });
+
+                // 陸化したと思われる港ラベルレイヤ
+                map.addLayer({
+                    id: 'uplift-port-label',
+                    type: 'symbol',
+                    source: 'uplift-port',
+                    minzoom: 9,
+                    maxzoom: 18,
+                    layout: {
+                        'text-field': ['get', 'name'],
+                        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                        'text-size': 12,
+                        'text-anchor': 'center',
+                        'text-justify': 'center',
+                        'text-offset': [0, -1.4],
+                        'text-allow-overlap': true,
+                    },
+                    paint: {
+                        'text-color': 'rgba(0, 0, 0, 1)',
+                        'text-halo-color': 'rgba(255, 255, 255, 1)',
+                        'text-halo-width': 2,
+                    },
+                });
+
+                // ============================== 亀裂箇所 ==============================
+
+                // 亀裂箇所ソース
+                map.addSource('cracks', {
+                    type: 'geojson',
+                    data: 'https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-ortho-map-on-maplibre-gl-js/data/noto_cracks_20240214.geojson',
+                    attribution: '<a href="https://www.gsi.go.jp/BOUSAI/20240101_noto_earthquake.html">国土地理院 令和6年(2024年)能登半島地震に関する情報</a>',
+                });
+
+                // 亀裂箇所ラインレイヤ
+                map.addLayer({
+                    id: 'cracks-lines',
+                    type: 'line',
+                    source: 'cracks',
+                    paint: {
+                        'line-color': 'rgba(255, 0, 191, 1)',
+                        'line-width': 5,
+                    },
+                });
+
+                // スライダーで空中写真の不透明度を制御
+                const photosliderOpactiy = document.getElementById('photo-slider-opacity');
+                const photosliderOpactiyValue = document.getElementById('photo-slider-opacity-value');
+
+                photosliderOpactiy.addEventListener('input', (e) => {
+                    map.setPaintProperty('wazimanaka-0111', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    map.setPaintProperty('nanao-0105', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    map.setPaintProperty('anamizu-0117', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    map.setPaintProperty('wazimanishi-0111', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    map.setPaintProperty('wazimahigashi-0102', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    map.setPaintProperty('wazimahigashi-0114', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    map.setPaintProperty('suzu-0102', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    map.setPaintProperty('suzu-0114', 'raster-opacity', parseInt(e.target.value, 10) / 100);
+                    photosliderOpactiyValue.textContent = e.target.value + '%';
+                });
+
+                map.showTileBoundaries = false;
+            });
+
+            // ============================== レイヤの表示・非表示切り替え制御 ==============================
+
+            // 斜面崩壊・堆積分布データの表示・非表示切り替え制御
+            document.getElementById('hokai').addEventListener('change', function (e) {
+                if (e.target.checked) {
+                    // チェックボックスがON - レイヤーを表示
+                    map.setLayoutProperty('hokai_all_20240106_suzu-wajimaEAST-line', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_all_20240106_suzu-wajimaEAST-fill', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_all_20240115_wajimaCENTRAL-line', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_all_20240115_wajimaCENTRAL-fill', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_all_20240118_anamizu-line', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_all_20240118_anamizu-fill', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_all_20240118_nanao-line', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_all_20240118_nanao-fill', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_20240122_wajimaWEST-line', 'visibility', 'visible');
+                    map.setLayoutProperty('hokai_20240122_wajimaWEST-fill', 'visibility', 'visible');
+                } else {
+                    // チェックボックスがOFF - レイヤーを非表示
+                    map.setLayoutProperty('hokai_all_20240106_suzu-wajimaEAST-line', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_all_20240106_suzu-wajimaEAST-fill', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_all_20240115_wajimaCENTRAL-line', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_all_20240115_wajimaCENTRAL-fill', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_all_20240118_anamizu-line', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_all_20240118_anamizu-fill', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_all_20240118_nanao-line', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_all_20240118_nanao-fill', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_20240122_wajimaWEST-line', 'visibility', 'none');
+                    map.setLayoutProperty('hokai_20240122_wajimaWEST-fill', 'visibility', 'none');
+                }
+            });
+
+            // 空中写真判読による津波浸水域（推定）の表示・非表示切り替え制御
+            document.getElementById('tsunami').addEventListener('change', function (e) {
+                if (e.target.checked) {
+                    // チェックボックスがON - レイヤーを表示
+                    map.setLayoutProperty('tsunami_suzu-wajimaEAST-line', 'visibility', 'visible');
+                    map.setLayoutProperty('tsunami_suzu-wajimaEAST-fill', 'visibility', 'visible');
+                    map.setLayoutProperty('tsunami_anamizu-line', 'visibility', 'visible');
+                    map.setLayoutProperty('tsunami_anamizu-fill', 'visibility', 'visible');
+                    map.setLayoutProperty('tsunami_nanao-line', 'visibility', 'visible');
+                    map.setLayoutProperty('tsunami_nanao-fill', 'visibility', 'visible');
+                    map.setLayoutProperty('tsunami_wajimaWEST-line', 'visibility', 'visible');
+                    map.setLayoutProperty('tsunami_wajimaWEST-fill', 'visibility', 'visible');
+                } else {
+                    // チェックボックスがOFF - レイヤーを非表示
+                    map.setLayoutProperty('tsunami_suzu-wajimaEAST-line', 'visibility', 'none');
+                    map.setLayoutProperty('tsunami_suzu-wajimaEAST-fill', 'visibility', 'none');
+                    map.setLayoutProperty('tsunami_anamizu-line', 'visibility', 'none');
+                    map.setLayoutProperty('tsunami_anamizu-fill', 'visibility', 'none');
+                    map.setLayoutProperty('tsunami_nanao-line', 'visibility', 'none');
+                    map.setLayoutProperty('tsunami_nanao-fill', 'visibility', 'none');
+                    map.setLayoutProperty('tsunami_wajimaWEST-line', 'visibility', 'none');
+                    map.setLayoutProperty('tsunami_wajimaWEST-fill', 'visibility', 'none');
+                }
+            });
+
+            // 海岸線が前進した範囲の表示・非表示切り替え制御
+            document.getElementById('uplift').addEventListener('change', function (e) {
+                if (e.target.checked) {
+                    // チェックボックスがON - レイヤーを表示
+                    map.setLayoutProperty('Uplift-line', 'visibility', 'visible');
+                    map.setLayoutProperty('Uplift-fill', 'visibility', 'visible');
+                } else {
+                    // チェックボックスがOFF - レイヤーを非表示
+                    map.setLayoutProperty('Uplift-line', 'visibility', 'none');
+                    map.setLayoutProperty('Uplift-fill', 'visibility', 'none');
+                }
+            });
+
+            // 空中写真等の画像判読による輪島市中心の火災焼失範囲（推定）の表示・非表示切り替え制御
+            document.getElementById('fire').addEventListener('change', function (e) {
+                if (e.target.checked) {
+                    // チェックボックスがON - レイヤーを表示
+                    map.setLayoutProperty('fire_wajima-line', 'visibility', 'visible');
+                    map.setLayoutProperty('fire_wajima-fill', 'visibility', 'visible');
+                } else {
+                    // チェックボックスがOFF - レイヤーを非表示
+                    map.setLayoutProperty('fire_wajima-line', 'visibility', 'none');
+                    map.setLayoutProperty('fire_wajima-fill', 'visibility', 'none');
+                }
+            });
+
+            // 陸化したと思われる港の表示・非表示切り替え制御
+            document.getElementById('uplift-port').addEventListener('change', function (e) {
+                if (e.target.checked) {
+                    // チェックボックスがON - レイヤーを表示
+                    map.setLayoutProperty('uplift-port-symbol', 'visibility', 'visible');
+                    map.setLayoutProperty('uplift-port-label', 'visibility', 'visible');
+                } else {
+                    // チェックボックスがOFF - レイヤーを非表示
+                    map.setLayoutProperty('uplift-port-symbol', 'visibility', 'none');
+                    map.setLayoutProperty('uplift-port-label', 'visibility', 'none');
+                }
+            });
+
+            // 亀裂箇所
+            document.getElementById('cracks').addEventListener('change', function (e) {
+                if (e.target.checked) {
+                    // チェックボックスがON - レイヤーを表示
+                    map.setLayoutProperty('cracks-lines', 'visibility', 'visible');
+                } else {
+                    // チェックボックスがOFF - レイヤーを非表示
+                    map.setLayoutProperty('cracks-lines', 'visibility', 'none');
+                }
+            });
+        </script>
+    </body>
+</html>
