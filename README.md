@@ -1,6 +1,6 @@
 # 令和6年能登半島地震後 被災状況3Dマップ
 ## Public Website
-https://shi-works.github.io/noto-hanto-earthquake-2024-gsi-dsm-map-on-maplibre-gl-js/
+https://shiwaku.github.io/noto-peninsula-earthquake-2024-gsi-dsm-on-maplibre/
 
 https://github.com/shi-works/noto-hanto-earthquake-2024-gsi-dsm-map-on-maplibre-gl-js/assets/71203808/7491b0a3-e7f6-4cc7-932b-589415df5f37
 
